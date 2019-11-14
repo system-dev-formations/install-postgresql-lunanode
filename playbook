@@ -1,5 +1,15 @@
 ---
-- hosts: all
+- hosts: localhost
+  tasks:
+    - name: get public ip address of your internet provider
+      command: wget -qO- http://ipecho.net/plain
+      register: ip_myaddress
+    - name: Creer a dummy host for saving client ip_address
+      add_host:
+        name: "dummy"
+        ip: "{{ ip_myaddress.stdout }}"
+
+- hosts: lunanode
   become: true
   tasks:
     - name: update all packages
@@ -24,11 +34,11 @@
           - python-psycopg2
     - name: name if database is not empty
       stat:
-        path: /var/lib/pgsql/12/data
-      register: foundFiles
+        path: /var/lib/pgsql/12/data/pg_hba.conf
+      register: foundFile
     - name: run initdb
       shell: /usr/pgsql-12/bin/postgresql-12-setup initdb
-      when: foundFiles.stat.exists == False
+      when: foundFile.stat.exists == False
     - name: enable postgresql service
       shell: systemctl enable --now postgresql-12
     - name: Set postgres password
@@ -43,15 +53,11 @@
         regexp: '^#listen_addresses ='
         line: listen_addresses = '*'
         backup: yes
-    - name: get public ip address of your internet provider
-      connection: local
-      command: wget -qO- http://ipecho.net/plain
-      register: ip_address
     - name: Set connection string in pg_hba.conf
       lineinfile:
         path: /var/lib/pgsql/12/data/pg_hba.conf
         insertbefore: '# IPv6 local connections:'
-        line: host all all "{{ ip_address.stdout }}"/24 md5
+        line: host    all     all   {{ hostvars['dummy']['ip']}}/24   md5
         backup: yes
 
 
