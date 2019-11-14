@@ -1,0 +1,59 @@
+---
+- hosts: all
+  become: true
+  tasks:
+    - name: update all packages
+      yum: name=* state=latest
+    - name: install redhat postgresql repo
+      yum:
+        name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+        state: latest
+    - name: install epel et autres
+      yum:
+        name:
+          - epel-release
+          - yum-utils
+        state: present
+    - name: enable config-manager
+      shell: yum-config-manager --enable pgdg12
+    - name: install postgresql12
+      yum:
+        name:
+          - postgresql12-server
+          - postgresql12
+          - python-psycopg2
+    - name: name if database is not empty
+      stat:
+        path: /var/lib/pgsql/12/data
+      register: foundFiles
+    - name: run initdb
+      shell: /usr/pgsql-12/bin/postgresql-12-setup initdb
+      when: foundFiles.stat.exists == False
+    - name: enable postgresql service
+      shell: systemctl enable --now postgresql-12
+    - name: Set postgres password
+      become_user: postgres
+      postgresql_user:
+        db: postgres
+        name: postgres
+        password:  "{{ 'lawn-vex' | password_hash('md5') }}"
+    - name: Set postgresql to be connect from the outside world
+      lineinfile:
+        path: /var/lib/pgsql/12/data/postgresql.conf
+        regexp: '^#listen_addresses ='
+        line: listen_addresses = '*'
+        backup: yes
+    - name: get public ip address of your internet provider
+      connection: local
+      command: wget -qO- http://ipecho.net/plain
+      register: ip_address
+    - name: Set connection string in pg_hba.conf
+      lineinfile:
+        path: /var/lib/pgsql/12/data/pg_hba.conf
+        insertbefore: '# IPv6 local connections:'
+        line: host all all "{{ ip_address.stdout }}"/24 md5
+        backup: yes
+
+
+
+
