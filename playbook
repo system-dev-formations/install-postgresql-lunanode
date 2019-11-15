@@ -53,12 +53,48 @@
         regexp: '^#listen_addresses ='
         line: listen_addresses = '*'
         backup: yes
+      notify:
+      - restart postgresql
     - name: Set connection string in pg_hba.conf
       lineinfile:
         path: /var/lib/pgsql/12/data/pg_hba.conf
         insertbefore: '# IPv6 local connections:'
         line: host    all     all   {{ hostvars['dummy']['ip']}}/24   md5
-        backup: yes
+        state: present
+      notify:
+      - restart postgresql
+    - name: Install required packages for Docker
+      yum:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+        - yum-utils
+        - device-mapper-persistent-data
+        - lvm2
+    - name: Set up a stable repository
+      command: yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    - name: Install all docker packages
+      yum:
+        name: "{{ packages}}"
+        state: present
+      vars:
+        packages:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+    - name: start docker service
+      service:
+        name: docker
+        state: started
+    - name: Set docker group to current user
+      shell: usermod -aG docker {{ ansible_ssh_user }}
+
+  handlers:
+    - name: restart postgresql
+      service:
+        name: postgresql-12
+        state: restarted
 
 
 
